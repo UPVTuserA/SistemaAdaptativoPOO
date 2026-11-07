@@ -1,0 +1,16 @@
+/src/sistemaadaptativopoo/SistemaAdaptativoPoo.java
+# NetBeans
+nbproject/private/
+.netbeans/
+
+# Java
+*.class
+
+# Compilación
+build/
+dist/
+target/
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
