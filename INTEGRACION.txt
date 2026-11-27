@@ -1,0 +1,77 @@
+SISTEMA ADAPTATIVO POO - PROYECTO INTEGRADO
+============================================
+Base: Version 3 del profesor (repositorio UPVTuserA/SistemaAdaptativoPOO, rama master)
+Integracion: Alberto Jimenez Hernandez (equipo Epsilon)
+
+
+1. COMO ABRIRLO Y CORRERLO
+--------------------------
+1) NetBeans > File > Open Project > esta carpeta.
+2) En XAMPP enciende MySQL.
+3) Si la base no existe, en phpMyAdmin > SQL pega bd/sistema_adaptativo.sql
+   (crea las 16 tablas del modelo; no borra nada).
+   Opcional: bd/datos_ejemplo.sql agrega datos de prueba (POO, temas, alumnos).
+4) Clic derecho en src/vista/FrmMenuPrincipal.java > Run File.
+   Abre el MENU PRINCIPAL; desde ahi se abre cada tabla.
+   (Para que tambien abra con Run Project / F6: Project Properties > Run >
+    Main Class = vista.FrmMenuPrincipal)
+
+La conexion es la del profe: src/sistemaadaptativopoo/Conexion.java
+(base sistema_adaptativo, usuario root, contrasena admin). Si en tu XAMPP root
+no tiene contrasena, cambia PASSWORD a "" solo en tu computadora y NO lo subas.
+
+
+2. QUE TIENE INTEGRADO
+----------------------
+  Tabla               Formulario           Equipo
+  cat_plan_estudios   FrmPlanEstudios      Profesor
+  cat_carrera         FrmCarrera           Gamma (Eduardo Cortes)*
+  cat_pregunta        FrmPregunta          Epsilon
+  respuesta_alumno    FrmRespuestaAlumno   Epsilon
+
+  * El CRUD de gamma era de consola, con su propia conexion y fuera de un
+    paquete (no compilaba en este proyecto). Se adapto respetando sus mismas
+    consultas: modelo/Carrera, dao/CarreraDAO (con la Conexion del proyecto)
+    y vista/FrmCarrera.
+
+Las otras 12 tablas aparecen en el menu como "Pendiente".
+
+
+3. COMO INTEGRA SU TABLA CADA EQUIPO (4 pasos)
+----------------------------------------------
+Usen la misma estructura que el profe:
+
+  src/modelo/TuTabla.java        clase con atributos, getters y setters
+  src/dao/TuTablaDAO.java        listar, insertar, actualizar, eliminar
+                                 (usa Conexion.conectar() del proyecto,
+                                  NO otra conexion propia)
+  src/vista/FrmTuTabla.java      formulario JFrame (+ su .form)
+
+Y para que aparezca en el menu:
+
+  Abre src/vista/FrmMenuPrincipal.java, metodo registrarModulos(),
+  busca la linea de su tabla y cambia el null por su formulario:
+
+    antes:  agregar("Exámenes", "Exámenes", "cat_examen", "", null);
+    despues: agregar("Exámenes", "Exámenes", "cat_examen", "Alfa", FrmExamen::new);
+
+  Listo: la tarjeta se pone azul y abre su formulario.
+
+Recomendaciones para que todo se vea igual:
+  - Pueden usar vista/Estilo.java (botones de color, tabla con busqueda,
+    validacion en rojo, barra de estado). Ver FrmCarrera como ejemplo corto.
+  - Para elegir llaves foraneas por nombre (y no escribir claves) usen
+    modelo/Opcion.java en un JComboBox<Opcion>.
+  - No pongan System.exit ni EXIT_ON_CLOSE en su formulario: el menu ya
+    hace que al cerrarlo solo se cierre esa ventana.
+
+
+4. ARCHIVOS NUEVOS DE LA INTEGRACION
+------------------------------------
+  src/vista/FrmMenuPrincipal.java (+ .form)            menu de modulos
+  src/vista/Estilo.java                                diseno compartido
+  src/modelo/Opcion.java                               elementos de combos
+  bd/sistema_adaptativo.sql                            las 16 tablas del modelo
+  bd/datos_ejemplo.sql                                 datos de prueba
+
+No se modifico ningun archivo del profesor.
