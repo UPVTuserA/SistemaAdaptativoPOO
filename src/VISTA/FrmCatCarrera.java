@@ -9,6 +9,7 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 
 /**
  * Formulario Swing para el CRUD de la tabla cat_carrera.
@@ -85,22 +86,32 @@ public class FrmCatCarrera extends JFrame {
         pnlBotones.add(btnEliminar);
         add(pnlBotones, BorderLayout.SOUTH);
 
-        leer();
+        // Carga inicial: se difiere para que el dialogo de error no aparezca
+        // antes de que la ventana sea visible.
+        SwingUtilities.invokeLater(this::leer);
     }
 
     // ==========================================
     // CREATE
     // ==========================================
     private void insertar() {
+        CatCarrera carrera;
         try {
-            CatCarrera carrera = crearDesdeFormulario();
-            dao.insertar(carrera);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "cve_carrera y cat_plan_estudios_cve deben ser números.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            carrera = crearDesdeFormulario();
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;   // NO se limpia el formulario: el usuario conserva lo que escribio
         }
+
+        if (!dao.insertar(carrera)) {
+            errorBaseDatos("insertar", dao.getUltimoError());
+            return;   // NO se limpia el formulario si la insercion fallo
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro insertado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // ==========================================
@@ -108,7 +119,14 @@ public class FrmCatCarrera extends JFrame {
     // ==========================================
     private void leer() {
         modeloTabla.setRowCount(0);
-        for (CatCarrera c : dao.leer()) {
+        var lista = dao.leer();
+
+        if (dao.getUltimoError() != null) {
+            errorBaseDatos("leer los registros", dao.getUltimoError());
+            return;
+        }
+
+        for (CatCarrera c : lista) {
             modeloTabla.addRow(new Object[]{
                     c.getCveCarrera(), c.getCatPlanEstudiosCve(), c.getEstatus(), c.getNombre(),
                     c.getFechaActivacion(), c.getFechaInactiva(), c.getFechaLiquidacion()
@@ -120,49 +138,115 @@ public class FrmCatCarrera extends JFrame {
     // UPDATE
     // ==========================================
     private void actualizar() {
+        CatCarrera carrera;
         try {
-            CatCarrera carrera = crearDesdeFormulario();
-            dao.actualizar(carrera);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "cve_carrera y cat_plan_estudios_cve deben ser números.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            carrera = crearDesdeFormulario();
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;
         }
+
+        if (!dao.actualizar(carrera)) {
+            errorBaseDatos("actualizar", dao.getUltimoError());
+            return;
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro actualizado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // ==========================================
     // DELETE
     // ==========================================
     private void eliminar() {
+        int cve;
         try {
-            int cve = Integer.parseInt(txtCveCarrera.getText().trim());
-            dao.eliminar(cve);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Ingrese un cve_carrera válido para eliminar.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            cve = leerEntero(txtCveCarrera, "cve_carrera");
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;
+        }
+
+        if (!dao.eliminar(cve)) {
+            errorBaseDatos("eliminar", dao.getUltimoError());
+            return;
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro eliminado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    // ==========================================
+    // VALIDACIONES
+    // ==========================================
+
+    /** Lee un entero obligatorio indicando exactamente cual campo fallo. */
+    private int leerEntero(JTextField campo, String nombreCampo) {
+        String texto = campo.getText().trim();
+        if (texto.isEmpty()) {
+            throw new IllegalArgumentException("El campo \"" + nombreCampo + "\" está vacío.");
+        }
+        try {
+            return Integer.parseInt(texto);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "El campo \"" + nombreCampo + "\" debe ser un número entero.\nValor escrito: \"" + texto + "\"");
         }
     }
 
-    // --- Convierte los campos del formulario en una entidad CatCarrera ---
+    /** Lee una fecha opcional en formato aaaa-mm-dd. */
+    private LocalDate leerFecha(JTextField campo, String nombreCampo) {
+        String texto = campo.getText().trim();
+        if (texto.isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(texto);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "El campo \"" + nombreCampo + "\" debe tener el formato aaaa-mm-dd.\nValor escrito: \"" + texto + "\"");
+        }
+    }
+
+    /** Valida todos los campos y construye la entidad. Lanza IllegalArgumentException con el detalle. */
     private CatCarrera crearDesdeFormulario() {
+        if (txtEstatus.getText().trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo \"estatus\" es obligatorio.");
+        }
+        if (txtNombre.getText().trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo \"nombre\" es obligatorio.");
+        }
+
         return new CatCarrera(
-                Integer.parseInt(txtCveCarrera.getText().trim()),
-                Integer.parseInt(txtPlanEstudiosCve.getText().trim()),
+                leerEntero(txtCveCarrera, "cve_carrera"),
+                leerEntero(txtPlanEstudiosCve, "cat_plan_estudios_cve"),
                 txtEstatus.getText().trim(),
                 txtNombre.getText().trim(),
-                parseFecha(txtFechaActivacion.getText()),
-                parseFecha(txtFechaInactiva.getText()),
-                parseFecha(txtFechaLiquidacion.getText())
+                leerFecha(txtFechaActivacion, "fecha_activacion"),
+                leerFecha(txtFechaInactiva, "fecha_inactiva"),
+                leerFecha(txtFechaLiquidacion, "fecha_liquidacion")
         );
     }
 
-    // --- Convierte un texto a LocalDate (devuelve null si esta vacio) ---
-    private LocalDate parseFecha(String texto) {
-        String t = texto.trim();
-        return t.isEmpty() ? null : LocalDate.parse(t);
+    // ==========================================
+    // DIALOGOS DE ERROR
+    // ==========================================
+    private void errorValidacion(String detalle) {
+        JOptionPane.showMessageDialog(this, detalle,
+                "Error de validación", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void errorBaseDatos(String accion, String detalle) {
+        JOptionPane.showMessageDialog(this,
+                "No se pudo " + accion + ".\n\n" +
+                        "Detalle: " + detalle + "\n\n" +
+                        "Base de datos: " + dao.getUrl() +
+                        "\n\nVerifica que exista la BD y que setup.sql se haya ejecutado.",
+                "Error de base de datos", JOptionPane.ERROR_MESSAGE);
     }
 
     private void limpiar() {

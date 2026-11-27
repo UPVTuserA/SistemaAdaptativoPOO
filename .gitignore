@@ -10,6 +10,7 @@ nbproject/private/
 build/
 dist/
 target/
+out/
 
 # Sistema operativo
 Thumbs.db

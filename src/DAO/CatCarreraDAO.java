@@ -5,25 +5,40 @@ package DAO;
 import MODELO.CatCarrera;
 
 import java.sql.*;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Capa de acceso a datos de la tabla cat_carrera.
  * Contiene las operaciones CREATE, READ, UPDATE y DELETE.
+ *
+ * Cada metodo deja el ultimo error en {@link #getUltimoError()} para que la
+ * VISTA pueda mostrarlo en pantalla (null cuando no hubo error).
  */
 public class CatCarreraDAO {
 
-    // Configuración de conexión a la base de datos (ajusta tus credenciales)
-    private static final String URL = "jdbc:mysql://localhost:3306/tu_base_de_datos?useSSL=false&serverTimezone=UTC";
-    private static final String USER = "tu_usuario";
-    private static final String PASSWORD = "tu_contraseña";
+    // Configuración de conexión a la base de datos (BD "test" incluida con MariaDB)
+    private static final String URL = "jdbc:mysql://localhost:3306/test?useSSL=false&serverTimezone=UTC";
+    private static final String USER = "";
+    private static final String PASSWORD = "";
+
+    private String ultimoError;
+
+    /** Devuelve el último error ocurrido, o null si todo fue bien. */
+    public String getUltimoError() {
+        return ultimoError;
+    }
+
+    /** Devuelve la URL usada, útil para diagnosticar problemas de conexión. */
+    public String getUrl() {
+        return URL;
+    }
 
     // ==========================================
     // MÉTODO: CREATE (INSERTAR)
     // ==========================================
-    public void insertar(CatCarrera carrera) {
+    public boolean insertar(CatCarrera carrera) {
+        ultimoError = null;
         String sql = "INSERT INTO cat_carrera (cve_carrera, cat_plan_estudios_cve, estatus, nombre, fecha_activacion, fecha_inactiva, fecha_liquidacion) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
@@ -38,9 +53,11 @@ public class CatCarreraDAO {
             pstmt.setObject(7, carrera.getFechaLiquidacion());
 
             pstmt.executeUpdate();
-            System.out.println("✔ Registro insertado exitosamente.");
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al insertar: " + e.getMessage());
+            return false;
         }
     }
 
@@ -48,6 +65,7 @@ public class CatCarreraDAO {
     // MÉTODO: READ (LEER / CONSULTAR)
     // ==========================================
     public List<CatCarrera> leer() {
+        ultimoError = null;
         String sql = "SELECT * FROM cat_carrera";
         List<CatCarrera> lista = new ArrayList<>();
 
@@ -55,9 +73,8 @@ public class CatCarreraDAO {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
-            System.out.println("\n--- LISTADO DE CAT_CARRERA ---");
             while (rs.next()) {
-                CatCarrera carrera = new CatCarrera(
+                lista.add(new CatCarrera(
                         rs.getInt("cve_carrera"),
                         rs.getInt("cat_plan_estudios_cve"),
                         rs.getString("estatus"),
@@ -65,20 +82,12 @@ public class CatCarreraDAO {
                         rs.getDate("fecha_activacion") != null ? rs.getDate("fecha_activacion").toLocalDate() : null,
                         rs.getDate("fecha_inactiva") != null ? rs.getDate("fecha_inactiva").toLocalDate() : null,
                         rs.getDate("fecha_liquidacion") != null ? rs.getDate("fecha_liquidacion").toLocalDate() : null
-                );
-                lista.add(carrera);
-
-                System.out.println("Clave Carrera: " + carrera.getCveCarrera() +
-                        " | Plan Estudios CVE: " + carrera.getCatPlanEstudiosCve() +
-                        " | Estatus: " + carrera.getEstatus() +
-                        " | Nombre: " + carrera.getNombre() +
-                        " | F. Activación: " + carrera.getFechaActivacion() +
-                        " | F. Inactiva: " + carrera.getFechaInactiva() +
-                        " | F. Liquidación: " + carrera.getFechaLiquidacion());
+                ));
             }
-            System.out.println("-------------------------------\n");
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al leer: " + e.getMessage());
+            lista.clear();
         }
         return lista;
     }
@@ -86,7 +95,8 @@ public class CatCarreraDAO {
     // ==========================================
     // MÉTODO: UPDATE (ACTUALIZAR)
     // ==========================================
-    public void actualizar(CatCarrera carrera) {
+    public boolean actualizar(CatCarrera carrera) {
+        ultimoError = null;
         String sql = "UPDATE cat_carrera SET cat_plan_estudios_cve = ?, estatus = ?, nombre = ?, fecha_activacion = ?, fecha_inactiva = ?, fecha_liquidacion = ? WHERE cve_carrera = ?";
 
         try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
@@ -100,21 +110,24 @@ public class CatCarreraDAO {
             pstmt.setObject(6, carrera.getFechaLiquidacion());
             pstmt.setInt(7, carrera.getCveCarrera());
 
-            int filasAfectadas = pstmt.executeUpdate();
-            if (filasAfectadas > 0) {
-                System.out.println("✔ Registro actualizado exitosamente.");
-            } else {
-                System.out.println("⚠️ No se encontró un registro con la clave especificada.");
+            int filas = pstmt.executeUpdate();
+            if (filas == 0) {
+                ultimoError = "No existe un registro con cve_carrera = " + carrera.getCveCarrera() + ".";
+                return false;
             }
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al actualizar: " + e.getMessage());
+            return false;
         }
     }
 
     // ==========================================
     // MÉTODO: DELETE (ELIMINAR)
     // ==========================================
-    public void eliminar(int cveCarrera) {
+    public boolean eliminar(int cveCarrera) {
+        ultimoError = null;
         String sql = "DELETE FROM cat_carrera WHERE cve_carrera = ?";
 
         try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
@@ -122,14 +135,16 @@ public class CatCarreraDAO {
 
             pstmt.setInt(1, cveCarrera);
 
-            int filasAfectadas = pstmt.executeUpdate();
-            if (filasAfectadas > 0) {
-                System.out.println("✔ Registro eliminado exitosamente.");
-            } else {
-                System.out.println("⚠️ No se encontró un registro con la clave especificada.");
+            int filas = pstmt.executeUpdate();
+            if (filas == 0) {
+                ultimoError = "No existe un registro con cve_carrera = " + cveCarrera + ".";
+                return false;
             }
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al eliminar: " + e.getMessage());
+            return false;
         }
     }
 }

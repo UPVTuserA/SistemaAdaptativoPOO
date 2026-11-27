@@ -13,18 +13,34 @@ import java.util.List;
 /**
  * Capa de acceso a datos de la tabla cat_examen.
  * Contiene las operaciones CREATE, READ, UPDATE y DELETE.
+ *
+ * Cada metodo deja el ultimo error en {@link #getUltimoError()} para que la
+ * VISTA pueda mostrarlo en pantalla (null cuando no hubo error).
  */
 public class CatExamenDAO {
 
-    // Configuración de conexión a la base de datos (ajusta tus credenciales)
-    private static final String URL = "jdbc:mysql://localhost:3306/tu_base_de_datos?useSSL=false&serverTimezone=UTC";
-    private static final String USER = "tu_usuario";
-    private static final String PASSWORD = "tu_contraseña";
+    // Configuración de conexión a la base de datos (BD "test" incluida con MariaDB)
+    private static final String URL = "jdbc:mysql://localhost:3306/test?useSSL=false&serverTimezone=UTC";
+    private static final String USER = "";
+    private static final String PASSWORD = "";
+
+    private String ultimoError;
+
+    /** Devuelve el último error ocurrido, o null si todo fue bien. */
+    public String getUltimoError() {
+        return ultimoError;
+    }
+
+    /** Devuelve la URL usada, útil para diagnosticar problemas de conexión. */
+    public String getUrl() {
+        return URL;
+    }
 
     // ==========================================
     // MÉTODO: CREATE (INSERTAR)
     // ==========================================
-    public void insertar(CatExamen examen) {
+    public boolean insertar(CatExamen examen) {
+        ultimoError = null;
         String sql = "INSERT INTO cat_examen (cve_examen, cat_profesor_cve_profesor, cat_materias_clave_materia, " +
                 "cat_unidades_materia_cve_unidad, tipo_examen, periodo, anio) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
@@ -40,9 +56,11 @@ public class CatExamenDAO {
             pstmt.setInt(7, examen.getAnio());
 
             pstmt.executeUpdate();
-            System.out.println("✔ Registro insertado exitosamente.");
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al insertar: " + e.getMessage());
+            return false;
         }
     }
 
@@ -50,6 +68,7 @@ public class CatExamenDAO {
     // MÉTODO: READ (LEER / CONSULTAR)
     // ==========================================
     public List<CatExamen> leer() {
+        ultimoError = null;
         String sql = "SELECT * FROM cat_examen";
         List<CatExamen> lista = new ArrayList<>();
 
@@ -57,9 +76,8 @@ public class CatExamenDAO {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
-            System.out.println("\n--- LISTADO DE CAT_EXAMEN ---");
             while (rs.next()) {
-                CatExamen examen = new CatExamen(
+                lista.add(new CatExamen(
                         rs.getInt("cve_examen"),
                         rs.getInt("cat_profesor_cve_profesor"),
                         rs.getString("cat_materias_clave_materia"),
@@ -67,20 +85,12 @@ public class CatExamenDAO {
                         TipoExamen.desdeValor(rs.getString("tipo_examen")),
                         Periodo.desdeValor(rs.getString("periodo")),
                         rs.getInt("anio")
-                );
-                lista.add(examen);
-
-                System.out.println("Clave Examen: " + examen.getCveExamen() +
-                        " | Profesor CVE: " + examen.getCatProfesorCveProfesor() +
-                        " | Materia: " + examen.getCatMateriasClaveMateria() +
-                        " | Unidad: " + examen.getCatUnidadesMateriaCveUnidad() +
-                        " | Tipo: " + examen.getTipoExamen().getValor() +
-                        " | Periodo: " + examen.getPeriodo().getValor() +
-                        " | Año: " + examen.getAnio());
+                ));
             }
-            System.out.println("-------------------------------\n");
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al leer: " + e.getMessage());
+            lista.clear();
         }
         return lista;
     }
@@ -88,7 +98,8 @@ public class CatExamenDAO {
     // ==========================================
     // MÉTODO: UPDATE (ACTUALIZAR)
     // ==========================================
-    public void actualizar(CatExamen examen) {
+    public boolean actualizar(CatExamen examen) {
+        ultimoError = null;
         String sql = "UPDATE cat_examen SET cat_profesor_cve_profesor = ?, cat_materias_clave_materia = ?, " +
                 "cat_unidades_materia_cve_unidad = ?, tipo_examen = ?, periodo = ?, anio = ? WHERE cve_examen = ?";
 
@@ -103,21 +114,24 @@ public class CatExamenDAO {
             pstmt.setInt(6, examen.getAnio());
             pstmt.setInt(7, examen.getCveExamen());
 
-            int filasAfectadas = pstmt.executeUpdate();
-            if (filasAfectadas > 0) {
-                System.out.println("✔ Registro actualizado exitosamente.");
-            } else {
-                System.out.println("⚠️ No se encontró un registro con la clave especificada.");
+            int filas = pstmt.executeUpdate();
+            if (filas == 0) {
+                ultimoError = "No existe un registro con cve_examen = " + examen.getCveExamen() + ".";
+                return false;
             }
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al actualizar: " + e.getMessage());
+            return false;
         }
     }
 
     // ==========================================
     // MÉTODO: DELETE (ELIMINAR)
     // ==========================================
-    public void eliminar(int cveExamen) {
+    public boolean eliminar(int cveExamen) {
+        ultimoError = null;
         String sql = "DELETE FROM cat_examen WHERE cve_examen = ?";
 
         try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
@@ -125,14 +139,16 @@ public class CatExamenDAO {
 
             pstmt.setInt(1, cveExamen);
 
-            int filasAfectadas = pstmt.executeUpdate();
-            if (filasAfectadas > 0) {
-                System.out.println("✔ Registro eliminado exitosamente.");
-            } else {
-                System.out.println("⚠️ No se encontró un registro con la clave especificada.");
+            int filas = pstmt.executeUpdate();
+            if (filas == 0) {
+                ultimoError = "No existe un registro con cve_examen = " + cveExamen + ".";
+                return false;
             }
+            return true;
         } catch (SQLException e) {
+            ultimoError = e.getMessage();
             System.out.println("❌ Error al eliminar: " + e.getMessage());
+            return false;
         }
     }
 }

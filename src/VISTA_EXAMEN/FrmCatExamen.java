@@ -10,6 +10,7 @@ import MODELO_EXAMEN.TipoExamen;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.time.format.DateTimeParseException;
 
 /**
  * Formulario Swing para el CRUD de la tabla cat_examen.
@@ -48,7 +49,7 @@ public class FrmCatExamen extends JFrame {
         // --- Panel de campos ---
         JPanel pnlCampos = new JPanel(new GridLayout(4, 4, 8, 8));
         pnlCampos.setBorder(BorderFactory.createTitledBorder("Datos de cat_examen"));
-        pnlCampos.add(new JLabel("cve_examen:"));
+        pnlCampos.add(new JLabel("cve_examen (vacío = automático):"));
         pnlCampos.add(txtCveExamen);
         pnlCampos.add(new JLabel("cat_profesor_cve_profesor:"));
         pnlCampos.add(txtProfesorCve);
@@ -86,23 +87,33 @@ public class FrmCatExamen extends JFrame {
         pnlBotones.add(btnEliminar);
         add(pnlBotones, BorderLayout.SOUTH);
 
-        leer();
+        // Carga inicial diferida para que el dialogo de error no aparezca
+        // antes de que la ventana sea visible.
+        SwingUtilities.invokeLater(this::leer);
     }
 
     // ==========================================
     // CREATE
     // ==========================================
     private void insertar() {
+        CatExamen examen;
         try {
-            CatExamen examen = crearDesdeFormulario();
-            dao.insertar(examen);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this,
-                    "cve_examen, cat_profesor_cve_profesor, cat_unidades_materia_cve_unidad y anio deben ser números.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            // cve_examen es AUTO_INCREMENT: se permite dejarlo vacio
+            examen = crearDesdeFormulario(false);
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;   // NO se limpia el formulario si la validacion fallo
         }
+
+        if (!dao.insertar(examen)) {
+            errorBaseDatos("insertar", dao.getUltimoError());
+            return;   // NO se limpia el formulario si la insercion fallo
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro insertado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // ==========================================
@@ -110,7 +121,14 @@ public class FrmCatExamen extends JFrame {
     // ==========================================
     private void leer() {
         modeloTabla.setRowCount(0);
-        for (CatExamen e : dao.leer()) {
+        var lista = dao.leer();
+
+        if (dao.getUltimoError() != null) {
+            errorBaseDatos("leer los registros", dao.getUltimoError());
+            return;
+        }
+
+        for (CatExamen e : lista) {
             modeloTabla.addRow(new Object[]{
                     e.getCveExamen(), e.getCatProfesorCveProfesor(), e.getCatMateriasClaveMateria(),
                     e.getCatUnidadesMateriaCveUnidad(), e.getTipoExamen().getValor(),
@@ -123,44 +141,115 @@ public class FrmCatExamen extends JFrame {
     // UPDATE
     // ==========================================
     private void actualizar() {
+        CatExamen examen;
         try {
-            CatExamen examen = crearDesdeFormulario();
-            dao.actualizar(examen);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this,
-                    "cve_examen, cat_profesor_cve_profesor, cat_unidades_materia_cve_unidad y anio deben ser números.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            // En actualizar SI se necesita la clave
+            examen = crearDesdeFormulario(true);
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;
         }
+
+        if (!dao.actualizar(examen)) {
+            errorBaseDatos("actualizar", dao.getUltimoError());
+            return;
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro actualizado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // ==========================================
     // DELETE
     // ==========================================
     private void eliminar() {
+        int cve;
         try {
-            int cve = Integer.parseInt(txtCveExamen.getText().trim());
-            dao.eliminar(cve);
-            limpiar();
-            leer();
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Ingrese un cve_examen válido para eliminar.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+            cve = leerEntero(txtCveExamen, "cve_examen");
+        } catch (IllegalArgumentException ex) {
+            errorValidacion(ex.getMessage());
+            return;
+        }
+
+        if (!dao.eliminar(cve)) {
+            errorBaseDatos("eliminar", dao.getUltimoError());
+            return;
+        }
+
+        limpiar();
+        leer();
+        JOptionPane.showMessageDialog(this, "Registro eliminado exitosamente.",
+                "Éxito", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    // ==========================================
+    // VALIDACIONES
+    // ==========================================
+
+    /** Lee un entero obligatorio indicando exactamente cual campo fallo. */
+    private int leerEntero(JTextField campo, String nombreCampo) {
+        String texto = campo.getText().trim();
+        if (texto.isEmpty()) {
+            throw new IllegalArgumentException("El campo \"" + nombreCampo + "\" está vacío.");
+        }
+        try {
+            return Integer.parseInt(texto);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "El campo \"" + nombreCampo + "\" debe ser un número entero.\nValor escrito: \"" + texto + "\"");
         }
     }
 
-    // --- Convierte los campos del formulario en una entidad CatExamen ---
-    private CatExamen crearDesdeFormulario() {
+    /**
+     * Valida todos los campos y construye la entidad.
+     * @param requiereCve true en actualizar/eliminar, false en insertar (AUTO_INCREMENT)
+     * @throws IllegalArgumentException con el detalle del campo que fallo
+     */
+    private CatExamen crearDesdeFormulario(boolean requiereCve) {
+        if (requiereCve) {
+            leerEntero(txtCveExamen, "cve_examen");
+        }
+
+        int cveExamen;
+        String cveTexto = txtCveExamen.getText().trim();
+        if (cveTexto.isEmpty()) {
+            cveExamen = 0;   // AUTO_INCREMENT lo asigna la base de datos
+        } else {
+            cveExamen = leerEntero(txtCveExamen, "cve_examen");
+        }
+
+        if (txtMateriaClave.getText().trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo \"cat_materias_clave_materia\" es obligatorio.");
+        }
+
         return new CatExamen(
-                Integer.parseInt(txtCveExamen.getText().trim()),
-                Integer.parseInt(txtProfesorCve.getText().trim()),
+                cveExamen,
+                leerEntero(txtProfesorCve, "cat_profesor_cve_profesor"),
                 txtMateriaClave.getText().trim(),
-                Integer.parseInt(txtUnidadCve.getText().trim()),
+                leerEntero(txtUnidadCve, "cat_unidades_materia_cve_unidad"),
                 (TipoExamen) cmbTipoExamen.getSelectedItem(),
                 (Periodo) cmbPeriodo.getSelectedItem(),
-                Integer.parseInt(txtAnio.getText().trim())
+                leerEntero(txtAnio, "anio")
         );
+    }
+
+    // ==========================================
+    // DIALOGOS DE ERROR
+    // ==========================================
+    private void errorValidacion(String detalle) {
+        JOptionPane.showMessageDialog(this, detalle,
+                "Error de validación", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void errorBaseDatos(String accion, String detalle) {
+        JOptionPane.showMessageDialog(this,
+                "No se pudo " + accion + ".\n\n" +
+                        "Detalle: " + detalle + "\n\n" +
+                        "Base de datos: " + dao.getUrl() +
+                        "\n\nVerifica que exista la BD y que setup.sql se haya ejecutado.",
+                "Error de base de datos", JOptionPane.ERROR_MESSAGE);
     }
 
     private void limpiar() {
